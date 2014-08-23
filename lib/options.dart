@@ -52,7 +52,7 @@ class GenerationOptions {
   /// generate. For example `MyMessage.has_field` to `HasFld`.
   final Map<String, String> fieldNameOverrides;
 
-  GenerationOptions(this.fieldNameOverrides);
+  const GenerationOptions(this.fieldNameOverrides);
 }
 
 /// A parser for a name-value pair option. Options parsed in

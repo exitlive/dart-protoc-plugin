@@ -42,3 +42,63 @@ class DefaultOutputConfiguration extends OutputConfiguration {
         builder.relative(targetPath, from: sourceDir)));
   }
 }
+
+/// A [SourceMap] output configuration maps protobuffer
+class MappedOutputConfiguration extends OutputConfiguration {
+
+  /// Maps protobuffer templates which in a subdirectory of the key
+  /// to the corresponding subdirectory of the appropriate value.
+  /// If no subdirectory
+  Map<Uri,Uri> sourceMap;
+
+  MappedOutputConfiguration(this.sourceMap);
+
+  Uri replaceMappedDirectory(Uri keyDir, Uri uri) {
+    var builder = path.url;
+    var filePath = builder.fromUri(uri);
+    var sourcePath = builder.fromUri(keyDir);
+    var targetPath = builder.fromUri(sourceMap[keyDir]);
+    assert(builder.isWithin(sourcePath, filePath));
+    var relPath = builder.relative(filePath, from: sourcePath);
+
+    return builder.toUri(builder.join(targetPath, relPath));
+  }
+
+  Uri mostSpecificMappedSource(Uri uri) {
+    var builder = path.url;
+    var sourceDirPath;
+    var filePath = builder.fromUri(uri);
+    for (var key in sourceMap.keys) {
+      var keyPath = builder.fromUri(key);
+      if (builder.isWithin(keyPath, filePath)) {
+        if (sourceDirPath == null ||
+            builder.isWithin(sourceDirPath, keyPath))
+          sourceDirPath = keyPath;
+      }
+    }
+    if (sourceDirPath == null)
+      throw new ArgumentError('No mapped location for $uri');
+    return builder.toUri(sourceDirPath);
+  }
+
+  /**
+   * Returns the path, under the mapped output folder for the most specific
+   * key which matches the uri path.
+   *
+   * Raises an exception if no mapping can be found for the uri.
+   */
+  Uri outputPathFor(Uri uri) {
+    var sourceDir = mostSpecificMappedSource(uri);
+    return replaceUriExtension(replaceMappedDirectory(sourceDir, uri));
+  }
+
+  @override
+  Uri resolveImport(Uri target, Uri source) {
+    var builder = path.url;
+    var sourceDir = builder.dirname(builder.fromUri(outputPathFor(source)));
+    var targetPath = builder.fromUri(outputPathFor(target));
+    return builder.toUri(
+        builder.relative(targetPath, from: sourceDir)
+    );
+  }
+}

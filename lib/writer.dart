@@ -23,3 +23,17 @@ class MemoryWriter implements Writer {
 
   String toString() => _buffer.toString();
 }
+
+class FileWriter extends MemoryWriter {
+
+  final Uri filePath;
+
+  FileWriter(this.filePath);
+
+  Future toFile() {
+    var file = new File.fromUri(filePath);
+    return file.create(recursive: true).then((_) {
+      return file.writeAsString(toString(), flush: true);
+    });
+  }
+}

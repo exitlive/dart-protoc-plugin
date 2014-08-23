@@ -32,6 +32,13 @@ class FileGenerator extends ProtobufContainer {
   String get classname => '';
   String get fqname => '.${_fileDescriptor.package}';
 
+  Uri get outputPath =>
+      _context.outputConfiguration.outputPathFor(
+          new Uri.file(_fileDescriptor.name)
+      );
+
+
+
   // Extract the filename from a URI and remove the extension.
   String _fileNameWithoutExtension(Uri filePath) {
     String fileName = filePath.pathSegments.last;
