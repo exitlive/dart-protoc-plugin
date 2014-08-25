@@ -1,6 +1,7 @@
 library protoc_builder;
 
 import 'dart:async';
+import 'dart:convert' show JSON;
 import 'dart:io';
 
 import 'package:quiver/async.dart';
@@ -10,6 +11,7 @@ import 'protoc.dart';
 
 part 'builder/build_args.dart';
 part 'builder/builder.dart';
+part 'builder/machine_output.dart';
 part 'builder/manifest_generator.dart';
 
 var _pathToProtoc = null;

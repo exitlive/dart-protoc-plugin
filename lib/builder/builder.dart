@@ -66,10 +66,30 @@ class Builder extends ProtobufContainer {
   }
 
   Future build() {
+    MachineOutput machineOutput = null;
+    if (buildArgs.machineOut) {
+      machineOutput = new MachineOutput(templateRoot, outputConfiguration);
+    }
+
     print('Building');
     return deleteRemovedFiles(removedFiles)
         .then((_) => compileChangedFiles(changedFiles))
-        .then((_) => generateManifests(modifiedFiles));
+        .then((_) => generateManifests(modifiedFiles))
+        .catchError((err, stackTrace) {
+            if (machineOutput != null) {
+              for (var compilerError in machineOutput.parseCompilerError(err)) {
+                print('[${JSON.encode(compilerError)}]');
+              }
+            }
+            throw err;
+        }, test: (err) => err is CompilerError)
+        .then((_) {
+          if (machineOutput != null) {
+            for (var mapping in machineOutput.generateFileMappings(changedFiles)) {
+              print('[${JSON.encode(mapping)}]');
+            }
+          }
+        });
   }
 
 
