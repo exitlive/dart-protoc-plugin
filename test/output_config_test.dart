@@ -36,6 +36,15 @@ void main() {
       );
     });
 
+    test("should default to the value of the `'.'` key in the source map", () {
+      (outputConfig as MappedOutputConfiguration)
+          ..sourceMap[Uri.parse('.')] = Uri.parse('out/default_package');
+      expect(
+          outputConfig.outputPathFor(Uri.parse('f2/file.proto')).toString(),
+          'out/default_package/f2/file.pb.dart'
+      );
+    });
+
     test("should resolve correct import path", () {
       var source = Uri.parse('f1/sf1/file1.proto');
       var target = Uri.parse('f1/sf2/file2.proto');
@@ -44,6 +53,8 @@ void main() {
           Uri.parse('../../package2/file2.pb.dart')
       );
     });
+
+
   });
 
 }

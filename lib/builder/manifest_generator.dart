@@ -13,12 +13,11 @@ class ManifestGenerator {
   String _libraryRootName(sourceDir) {
     var builder = path.url;
     var sourcePath = builder.fromUri(sourceDir);
-    if (sourcePath == '') {
+    if ('$sourcePath' == '.') {
       //If the templates are in the root of the directory, name the library 'manifest'.
-      return 'manifest';
+      return 'messages';
     }
     return sourcePath.replaceAll(builder.separator, '_');
-
   }
 
   String manifestLibraryName(Uri sourceDir) {
@@ -77,6 +76,7 @@ class ManifestGenerator {
         return new Future.value();
       }
       var manifestPath = manifestLibraryPath(sourceDir);
+      print('Manifest path: $manifestPath');
       var fileWriter = new FileWriter(manifestPath);
       generateManifestFile(new IndentingWriter('  ', fileWriter), sourceDir);
       return fileWriter.toFile();

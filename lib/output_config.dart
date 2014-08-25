@@ -53,7 +53,7 @@ class MappedOutputConfiguration extends OutputConfiguration {
 
   MappedOutputConfiguration(this.sourceMap);
 
-  Uri replaceMappedDirectory(Uri keyDir, Uri uri) {
+  Uri _replaceMappedDirectory(Uri keyDir, Uri uri) {
     var builder = path.url;
     var filePath = builder.fromUri(uri);
     var sourcePath = builder.fromUri(keyDir);
@@ -89,7 +89,7 @@ class MappedOutputConfiguration extends OutputConfiguration {
    */
   Uri outputPathFor(Uri uri) {
     var sourceDir = mostSpecificMappedSource(uri);
-    return replaceUriExtension(replaceMappedDirectory(sourceDir, uri));
+    return replaceUriExtension(_replaceMappedDirectory(sourceDir, uri));
   }
 
   @override

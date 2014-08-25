@@ -6,6 +6,8 @@ class Builder extends ProtobufContainer {
   final BuildArgs buildArgs;
   final Map<Uri,Uri> sourceMap;
 
+  final String pathToProtoc;
+
   final GenerationOptions options;
   OutputConfiguration get outputConfiguration =>
       new MappedOutputConfiguration(sourceMap);
@@ -13,6 +15,7 @@ class Builder extends ProtobufContainer {
   Builder(Uri this.templateRoot,
           Map<Uri,Uri> this.sourceMap,
           BuildArgs this.buildArgs,
+          String this.pathToProtoc,
          {this.options: const GenerationOptions(const <String,String>{})});
 
   Iterable<Uri> get changedFiles {

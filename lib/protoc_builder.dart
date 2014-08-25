@@ -14,64 +14,129 @@ part 'builder/builder.dart';
 part 'builder/machine_output.dart';
 part 'builder/manifest_generator.dart';
 
-var _pathToProtoc = null;
-
 /**
- * The path to the [:protoc:] executable in the filesystem.
- * If not set in a `POSIX` environment, will scan the users
- * `$PATH` for the executable file.
- */
-String get pathToProtoc {
-  if (_pathToProtoc == null) {
-    _pathToProtoc = _getProtocFromPath();
-  }
-  return _pathToProtoc;
-}
-void set pathToProtoc(String path) {
-  _pathToProtoc = path;
-}
-
-/**
- * Scans the directory [:templateRoot:] for *.proto files.
- * For each files, generates the file corresponding to the
- * file in a file relative to the [:out:] directory.
+ * Scans the [:templateRoot:] directory and compiles them to [:outDir:],
+ * preserving the directory structure.
  *
- * If [:manifestLib:] is provided and non-null a file will be generated in the
- * [:out:] directory which re-exports any libraries written to the [:out:]
- * directory.
+ * [:pathToProtoc:] is the location of the [:protoc:] compiler on the filesystem.
+ * In a unix environment, this can be left `null` to scan the user's `$PATH` for
+ * the `protoc` executable. It must be provided in a windows environment.
  *
- * [:importPath:] is a list of directories in which protobuffers imported
- * by .proto files in [:templateOut:] can be located. All paths in the [:importPath:]
- * are expect to either be absolute paths, or specified relative to the root
- * of the project (the directory which contains the 'pubspec.yaml' file).
- *
- * [:fieldNameOverrides:] is a map of field names to replace in the generated
- * output. See `README.md` for more info.
+ * [:fieldNameOverrides:] is a map of fields names to override when generating
+ * the protobuffer messages. See `README.md` for more information.
  *
  * [:buildArgs:] is a list of arguments that would be passed
  * to `build.dart` by the editor. The accepted arguments that
  * can be passed in via this method are:
- *   `--changed=<file>`: Recompile the file, if located in [:templateRoot:]
+ *   `--changed=<file>`: Recompile the file, if located within [:templateRoot:]
  *   `--clean`: clean the [:out:] directory
  *   `--full`: Clean [:out:] and recompile all files in the [:templateRoot:] directory
  *   `--machine`: Enables machine reporting of errors
  *   `--removed=<file>`: Remove any files generated from <file>
  */
-Future buildMapped(String templateRoot,
-                   Map<String,String> sourceMap,
-                   { List<String> buildArgs: const ['--full'] }) {
+
+Future build(String outDir,
+             {String templateRoot: 'proto',
+              String pathToProtoc: null,
+              List<String> buildArgs: const ['--full'],
+              Map<String,String> fieldNameOverrides: const {}
+             }) {
+  var sourceMap = { '.': outDir};
+  return buildMapped(
+      sourceMap,
+      fieldNameOverrides: fieldNameOverrides,
+      templateRoot: templateRoot,
+      pathToProtoc: pathToProtoc,
+      buildArgs: buildArgs
+  );
+}
+
+/**
+ * Compiles protobuffer files to the specified locations.
+ *
+ * [:sourceMap:] maps directories (expressed relative to [:templateRoot:]) to
+ * output directories (expressed relative to the project root). When compiling
+ * a protobuffer template, the file location will be mapped to the most specific
+ * output directory which contains the file.
+ *
+ * The key '.' in the source map represents the [:templateRoot:] directory.
+ * Other than a single key '.', it is an error if a source contains either '.'
+ * or '..' in the path.
+ *
+ * A `*.pbmanifest.dart` library, which reexports all files located under the
+ * key is written for each key in the map.
+ *
+ * [:templateRoot:] is a directory (specified relative to the project root) which
+ * contains the protobuffer templates. Defaults to `proto/`.
+ *
+ * eg. With a directory structure
+ *
+ *      /
+ *      |- lib
+ *      |  |- core
+ *      |  |  `- messages
+ *      |  |- services
+ *      |  `- proto
+ *      |- proto
+ *      |  |- core
+ *      |  |- services
+ *      |  | |- messages
+ *      |  | `- messages_base
+ *      |  `-test
+ *      `- test
+ *          `- messages
+ *
+ * And a source Map
+ *      { '.': 'lib/proto',
+ *        'core': 'lib/core/messages',
+ *        'services': 'lib/services/messages',
+ *        'services/base': 'lib/services/messages_base'
+ *        'test' : 'test/messages'
+ *      }
+ *
+ * The following mappings would hold
+ *      'proto/file.proto' -> 'lib/proto/file.proto'
+ *      'core/file.proto' -> 'lib/core/messages/file.proto'
+ *      'services/file.proto' -> 'lib/services/messages/file.proto'
+ *      'services/base/file.proto' -> 'lib/services/messages_base/file.proto'
+ *      'test/file.proto' -> 'test/messages/file.proto'
+ *
+ * [:pathToProtoc:] is the location of the [:protoc:] compiler on the filesystem.
+ * In a unix environment, this can be left `null` to scan the user's `$PATH` for
+ * the `protoc` executable. It must be provided in a windows environment.
+ *
+ * [:fieldNameOverrides:] is a map of fields names to override when generating
+ * the protobuffer messages. See `README.md` for more information.
+ *
+ * [:buildArgs:] is a list of arguments that would be passed
+ * to `build.dart` by the editor. The accepted arguments that
+ * can be passed in via this method are:
+ *   `--changed=<file>`: Recompile the file, if located within [:templateRoot:]
+ *   `--clean`: clean the [:out:] directory
+ *   `--full`: Clean [:out:] and recompile all files in the [:templateRoot:] directory
+ *   `--machine`: Enables machine reporting of errors
+ *   `--removed=<file>`: Remove any files generated from <file>
+ */
+Future buildMapped(Map<String,String> sourceMap,
+                   { String templateRoot: 'proto',
+                      String pathToProtoc: null,
+                     List<String> buildArgs: const ['--full'],
+                     Map<String,String> fieldNameOverrides: const {}}) {
   return new Future.sync(() {
+    if (pathToProtoc == null) {
+      pathToProtoc = _getProtocFromPath();
+    }
     var args = BuildArgs.parse(buildArgs);
-    //TODO: Field name overrides.
-    var options = new GenerationOptions(<String,String>{});
+    var options = new GenerationOptions(fieldNameOverrides);
     var pathBuilder = path.url;
     var rootUri = pathBuilder.toUri(templateRoot);
-    var sourceUriMap = new Map.fromIterable(
-        sourceMap.keys,
-        key: pathBuilder.toUri,
-        value: (k) => pathBuilder.toUri(sourceMap[k])
+    var builder = new Builder(
+        rootUri,
+        _toUriMap(sourceMap),
+        args,
+        pathToProtoc,
+        options: options
     );
-    var builder = new Builder(rootUri, sourceUriMap, args, options: options);
     return builder.build();
   });
 }
@@ -100,6 +165,18 @@ String _getProtocFromPath() {
   }
   throw 'protoc not found on \$PATH';
 
+}
+
+Map<Uri,Uri> _toUriMap(Map<String,String> sourceMap) {
+  var pathBuilder = path.url;
+  var uriMap = <Uri,Uri>{};
+  sourceMap.forEach((k,v) {
+    if (k != '.' && k.contains('.')) {
+      throw 'Only template root key in sourceMap can contain a \'.\' ($k)';
+    }
+    uriMap[pathBuilder.toUri(k)] = pathBuilder.toUri(sourceMap[k]);
+  });
+  return uriMap;
 }
 
 _forEachAsync(Iterable iterable, Future action(dynamic value)) {
