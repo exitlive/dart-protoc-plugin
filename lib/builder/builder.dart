@@ -2,70 +2,108 @@ part of protoc_builder;
 
 class Builder extends ProtobufContainer {
 
+  /// The standard file extension for protobuffer templates
+  static const PROTO_EXTENSION = '.proto';
+
+  /**
+   * The directory which contains all the protobuffers.
+   */
   final Uri templateRoot;
+  /**
+   * An absolutely specified directory under which all mapped sources
+   * will be generated.
+   */
+  final String projectRoot;
   final BuildArgs buildArgs;
-  final Map<Uri,Uri> sourceMap;
+  final Map<String,String> sourceMap;
 
   final String pathToProtoc;
 
   final GenerationOptions options;
   OutputConfiguration get outputConfiguration =>
-      new MappedOutputConfiguration(sourceMap);
+      new MappedOutputConfiguration(sourceMap, projectRoot: projectRoot);
 
   Builder(Uri this.templateRoot,
-          Map<Uri,Uri> this.sourceMap,
+          Map<String,String> this.sourceMap,
           BuildArgs this.buildArgs,
           String this.pathToProtoc,
-         {this.options: const GenerationOptions(const <String,String>{})});
+          { String this.projectRoot: null,
+            this.options: const GenerationOptions(const <String,String>{})});
 
-  Iterable<Uri> get changedFiles {
-    var builder = path.url;
-    var rootPath = builder.fromUri(templateRoot);
-    var files;
-    if (buildArgs.full) {
-      files = new Directory(rootPath)
-          .listSync(recursive: true)
-          .where((entry) => entry is File &&
-                            !entry.path.contains('packages') &&
-                            path.extension(entry.path) == '.proto'
-          ).map((entry) => entry.path);
-    } else {
-      files = buildArgs.changed
-          .where((filePath) =>
-              builder.isWithin(rootPath, filePath) &&
-              path.extension(filePath) == '.proto'
-      );
-    }
-    return files
-        .map((f) => builder.toUri(builder.relative(f, from: rootPath)));
+  Uri _relativeToTemplateRoot(String filePath) {
+    var pathBuilder = path.url;
+    var rootPath = pathBuilder.fromUri(templateRoot);
+    return pathBuilder.toUri(pathBuilder.relative(filePath, from: rootPath));
   }
 
-  Iterable<Uri> get removedFiles {
-    var builder = path.url;
-    var rootPath = builder.fromUri(templateRoot);
-
-    var files;
-    if (buildArgs.full || buildArgs.clean) {
-      files = new Directory(rootPath)
-          .listSync(recursive: true)
-          .where((entry) => entry is File &&
-                            !entry.path.contains('packages') &&
-                            path.extension(entry.path) == '.proto'
-          ).map((entry) => entry.path);
-    } else {
-      files = buildArgs.removed
-          .where((filePath) =>
-              builder.isWithin(rootPath, filePath) &&
-              path.extension(filePath) == '.proto');
-    }
-    return files
-        .map((f) => builder.toUri(builder.relative(f, from: rootPath)));
+  bool _isProtobufferTemplate(String filePath) {
+    var pathBuilder = path.url;
+    var rootPath = pathBuilder.fromUri(templateRoot);
+    return !filePath.contains('packages') &&
+           path.extension(filePath) == PROTO_EXTENSION &&
+           pathBuilder.isWithin(rootPath, filePath);
   }
 
-  Iterable<Uri> get modifiedFiles {
-    return new Set()
-        ..addAll(changedFiles)
-        ..addAll(removedFiles);
+  Set<Uri> _allProtobufferTemplates;
+  Set<Uri> _changedTemplates;
+  Set<Uri> _removedTemplates;
+  Set<Uri> _modifiedTemplates;
+
+  /// Returns all protobuffer files in the template directory as uris specified
+  /// relative to the protobuffer root.
+  Set<Uri> get allProtobufferTemplates {
+    if (_allProtobufferTemplates == null) {
+      var pathBuilder = path.url;
+      var rootPath = pathBuilder.fromUri(templateRoot);
+      _allProtobufferTemplates = new Directory(rootPath).listSync(recursive: true)
+          .where((entry) => _isProtobufferTemplate(entry.path))
+          .map((entry) => _relativeToTemplateRoot(entry.path))
+          .toSet();
+    }
+    return _allProtobufferTemplates;
+  }
+
+
+  Set<Uri> get changedTemplates {
+    if (_changedTemplates == null) {
+      var builder = path.url;
+      var rootPath = builder.fromUri(templateRoot);
+      if (buildArgs.full) {
+        _changedTemplates = allProtobufferTemplates;
+      } else {
+        _changedTemplates = buildArgs.changed
+            .where(_isProtobufferTemplate)
+            .map(_relativeToTemplateRoot)
+            .toSet();
+      }
+    }
+    return _changedTemplates;
+  }
+
+  Iterable<Uri> get removedTemplates {
+    if (_removedTemplates == null) {
+      var builder = path.url;
+      var rootPath = builder.fromUri(templateRoot);
+
+      if (buildArgs.full || buildArgs.clean) {
+        _removedTemplates = allProtobufferTemplates;
+      } else {
+        _removedTemplates = buildArgs.changed
+            .where(_isProtobufferTemplate)
+            .map(_relativeToTemplateRoot)
+            .toSet();
+      }
+    }
+    return _removedTemplates;
+  }
+
+  Set<Uri> get modifiedTemplates {
+    if (_modifiedTemplates == null) {
+      _modifiedTemplates = new Set()
+          ..addAll(changedTemplates)
+          ..addAll(removedTemplates);
+    }
+    return _modifiedTemplates;
   }
 
   Future build() {
@@ -74,10 +112,11 @@ class Builder extends ProtobufContainer {
       machineOutput = new MachineOutput(templateRoot, outputConfiguration);
     }
 
-    print('Building');
-    return deleteRemovedFiles(removedFiles)
-        .then((_) => compileChangedFiles(changedFiles))
-        .then((_) => generateManifests(modifiedFiles))
+    return deleteRemovedFiles(removedTemplates)
+        .then((_) => runProtocCompiler(changedTemplates)
+                     .then((descriptorSet) => compileChangedFiles(descriptorSet, changedTemplates)
+        ))
+        .then((_) => generateManifests(modifiedTemplates))
         .catchError((err, stackTrace) {
             if (machineOutput != null) {
               for (var compilerError in machineOutput.parseCompilerError(err)) {
@@ -88,7 +127,7 @@ class Builder extends ProtobufContainer {
         }, test: (err) => err is CompilerError)
         .then((_) {
           if (machineOutput != null) {
-            for (var mapping in machineOutput.generateFileMappings(changedFiles)) {
+            for (var mapping in machineOutput.generateFileMappings(changedTemplates)) {
               print('[${JSON.encode(mapping)}]');
             }
           }
@@ -98,7 +137,6 @@ class Builder extends ProtobufContainer {
 
   Future deleteRemovedFiles(Iterable<Uri> removedFiles) {
     var builder = path.url;
-    print('Removing files: $removedFiles');
     return _forEachAsync(removedFiles, (filePath) {
       var file = new File.fromUri(outputConfiguration.outputPathFor(filePath));
       if (!file.existsSync()) {
@@ -118,45 +156,39 @@ class Builder extends ProtobufContainer {
     return manifestGenerator.generate(modifiedFiles);
   }
 
-  Future compileChangedFiles(Iterable<Uri> changedFiles) {
+  Future compileChangedFiles(FileDescriptorSet descriptorSet, Iterable<Uri> changedFiles) {
     var generationContext = new GenerationContext(options,outputConfiguration);
-    return runProtocCompiler().then((FileDescriptorSet descriptorSet) {
-      var generators = <FileGenerator>[];
-      for (var file in descriptorSet.file) {
-        generators.add(new FileGenerator(file, this, generationContext));
+    var generators = <FileGenerator>[];
+    for (var file in descriptorSet.file) {
+      generators.add(new FileGenerator(file, this, generationContext));
+    }
+
+    return _forEachAsync(descriptorSet.file, (file) {
+      var filePath = new Uri.file(file.name);
+      if (!changedFiles.contains(filePath)) {
+        //The file was just imported by one of the changed protobuffers.
+        //It hasn't itself changed.
+        return new Future.value();
       }
+      var targetFile = outputConfiguration.outputPathFor(filePath);
+      var fileGen = generationContext.lookupFile(file.name);
+      var writer = new FileWriter(
+          outputConfiguration.outputPathFor(new Uri.file(file.name))
+      );
+      fileGen.generate(new IndentingWriter('  ', writer));
 
-      return forEachAsync(descriptorSet.file, (file) {
-        var filePath = new Uri.file(file.name);
-        if (!changedFiles.contains(filePath)) {
-          //The file was just imported by one of the changed protobuffers.
-          //It hasn't itself changed.
-          return new Future.value();
-        }
-        var targetFile = outputConfiguration.outputPathFor(filePath);
-        print('Writing $targetFile');
-        var fileGen = generationContext.lookupFile(file.name);
-        var writer = new FileWriter(
-            outputConfiguration.outputPathFor(new Uri.file(file.name))
-        );
-        fileGen.generate(new IndentingWriter('  ', writer));
-
-        return writer.toFile();
-      });
+      return writer.toFile();
     });
   }
 
-  Future<FileDescriptorSet> runProtocCompiler() {
-    var changedFiles = this.changedFiles;
-    print('Changed: $changedFiles');
-    if (changedFiles.isEmpty) {
+  Future<FileDescriptorSet> runProtocCompiler(Iterable<Uri> templatesToCompile) {
+    if (templatesToCompile.isEmpty)
       return new Future.value(new FileDescriptorSet());
-    }
     //TODO: This should be directed to a temp file.
     var protocArgs = [
         '--descriptor_set_out=/dev/stdout',
         '--include_imports'
-    ]..addAll(changedFiles.map((uri) => uri.toFilePath(windows: Platform.isWindows)));
+    ]..addAll(templatesToCompile.map((uri) => uri.toFilePath(windows: Platform.isWindows)));
     return Process.run(pathToProtoc, protocArgs,
         workingDirectory: templateRoot.toFilePath(windows: Platform.isWindows),
         stdoutEncoding: null

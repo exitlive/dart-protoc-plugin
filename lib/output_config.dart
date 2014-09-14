@@ -46,20 +46,29 @@ class DefaultOutputConfiguration extends OutputConfiguration {
 /// A [SourceMap] output configuration maps protobuffer
 class MappedOutputConfiguration extends OutputConfiguration {
 
-  /// Maps protobuffer templates which in a subdirectory of the key
-  /// to the corresponding subdirectory of the appropriate value.
-  /// If no subdirectory
-  Map<Uri,Uri> sourceMap;
+  final String projectRoot;
 
-  MappedOutputConfiguration(this.sourceMap);
+  /// Map all protobuffer templates in a subdirectory of the protobuffer
+  /// root to a specific directory.
+  Map<String,String> sourceMap;
 
-  Uri _replaceMappedDirectory(Uri keyDir, Uri uri) {
+  MappedOutputConfiguration(this.sourceMap, {this.projectRoot: null});
+
+  Uri _replaceMappedDirectory(String keyDir, Uri uri) {
     var builder = path.url;
     var filePath = builder.fromUri(uri);
-    var sourcePath = builder.fromUri(keyDir);
-    var targetPath = builder.fromUri(sourceMap[keyDir]);
-    assert(builder.isWithin(sourcePath, filePath));
-    var relPath = builder.relative(filePath, from: sourcePath);
+
+    var mappedPath = sourceMap[keyDir];
+    if (mappedPath == null) {
+      throw 'Entry in source map cannot be `null`';
+    }
+
+    var targetPath = (projectRoot != null)
+        ? path.join(projectRoot, mappedPath)
+        : mappedPath;
+
+    assert(builder.isWithin(keyDir, filePath));
+    var relPath = builder.relative(filePath, from: keyDir);
 
     return builder.toUri(builder.join(targetPath, relPath));
   }
@@ -69,11 +78,10 @@ class MappedOutputConfiguration extends OutputConfiguration {
     var sourceDirPath;
     var filePath = builder.fromUri(uri);
     for (var key in sourceMap.keys) {
-      var keyPath = builder.fromUri(key);
-      if (builder.isWithin(keyPath, filePath)) {
+      if (builder.isWithin(key, filePath)) {
         if (sourceDirPath == null ||
-            builder.isWithin(sourceDirPath, keyPath))
-          sourceDirPath = keyPath;
+            builder.isWithin(sourceDirPath, key))
+          sourceDirPath = key;
       }
     }
     if (sourceDirPath == null)
@@ -89,7 +97,7 @@ class MappedOutputConfiguration extends OutputConfiguration {
    */
   Uri outputPathFor(Uri uri) {
     var sourceDir = mostSpecificMappedSource(uri);
-    return replaceUriExtension(_replaceMappedDirectory(sourceDir, uri));
+    return replaceUriExtension(_replaceMappedDirectory(sourceDir.path, uri));
   }
 
   @override

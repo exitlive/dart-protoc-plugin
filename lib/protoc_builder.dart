@@ -118,7 +118,7 @@ Future build(String outDir,
  *   `--removed=<file>`: Remove any files generated from <file>
  */
 Future buildMapped(Map<String,String> sourceMap,
-                   { String templateRoot: 'proto',
+                   {  String templateRoot: 'proto',
                       String pathToProtoc: null,
                      List<String> buildArgs: const ['--full'],
                      Map<String,String> fieldNameOverrides: const {}}) {
@@ -128,11 +128,13 @@ Future buildMapped(Map<String,String> sourceMap,
     }
     var args = BuildArgs.parse(buildArgs);
     var options = new GenerationOptions(fieldNameOverrides);
+
     var pathBuilder = path.url;
     var rootUri = pathBuilder.toUri(templateRoot);
+
     var builder = new Builder(
         rootUri,
-        _toUriMap(sourceMap),
+        sourceMap,
         args,
         pathToProtoc,
         options: options
