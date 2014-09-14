@@ -4,8 +4,8 @@ part of protoc_builder;
  * The standard arguments accepted by `build.dart`
  */
 class BuildArgs {
-  static final _changedPattern = new RegExp('--changed=(.*?.proto)');
-  static final _removedPattern = new RegExp('--removed=(.*?.proto)');
+  static final _changedPattern = new RegExp(r'--changed=(.*)$');
+  static final _removedPattern = new RegExp(r'--removed=(.*)$');
 
   static BuildArgs parse(List<String> buildArgs) {
     BuildArgs args = new BuildArgs();
