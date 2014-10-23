@@ -53,7 +53,7 @@ class FileGenerator extends ProtobufContainer {
 
   String _generateLibraryName(Uri protoFilePath) {
     if (_fileDescriptor.package != '') return _fileDescriptor.package;
-    return _fileNameWithoutExtension(protoFilePath).replaceAll('-', '_');
+    return _fileNameWithoutExtension(protoFilePath).replaceAll('-', '_') + "_pbmessages";
   }
 
   CodeGeneratorResponse_File generateResponse() {
