@@ -68,7 +68,7 @@ class Builder extends ProtobufContainer {
     if (_changedTemplates == null) {
       var builder = path.url;
       var rootPath = builder.fromUri(templateRoot);
-      if (buildArgs.full || buildArgs.clean) {
+      if (buildArgs.full) {
         _changedTemplates = allProtobufferTemplates;
       } else {
         _changedTemplates = buildArgs.changed
